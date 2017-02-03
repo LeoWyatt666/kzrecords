@@ -13,7 +13,7 @@
 
 
 #define PLUGIN "KZ Records"
-#define VERSION "0.1"
+#define VERSION "0.2"
 #define AUTHOR "Jeronimo."
 
 #pragma semicolon 1
@@ -30,28 +30,34 @@ new const g_szDirFile[] = "kzrecords";
 new const g_szCommFile[] = "community.ini";
 
 new g_szCommDef[][][] =  {
-	{ "wr", "World", "http://xtreme-jumps.eu/demos.txt; http://cosy-climbing.net/demos.txt"},
 	{ "xj", "Xtreme-Jumps", "http://xtreme-jumps.eu/demos.txt"},
 	{ "cc", "Cosy-Climbing", "http://cosy-climbing.net/demos.txt"}
 };
 
-enum _:RD {
+enum _:COMM {
 	ID,
 	NAME,
 	URL,
 	UPDATED,
 	DEMOS
 };
-new g_szComm[32][RD][256];
+new g_szComm[32][COMM][256];
 
 enum _:CVAR {
-	WR,
-	COMM,
+	BOTS,
 	END,
 	PREFIX,
 	TEAM
 };
 new g_cvar[CVAR];
+
+enum _:REC {
+	MAPP,
+	TIME,
+	JUMPER,
+	COUNTRY,
+	EXT
+};
 
 /******************************************* BODY *************************************************/
 
@@ -68,8 +74,7 @@ public plugin_init() {
 	RegisterHam(Ham_Use, "func_button", "hamUse");
 	
 	// Cvars
-	g_cvar[WR]	= register_cvar("kzr_bot_wr", "1", ADMIN_RCON);
-	g_cvar[COMM] 	= register_cvar("kzr_bot_comm", "ru", ADMIN_RCON);
+	g_cvar[BOTS]	= register_cvar("kzr_bots", "wr ru", ADMIN_RCON);
 	g_cvar[END] 	= register_cvar("kzr_end", "1", ADMIN_RCON);
 	g_cvar[PREFIX] 	= register_cvar("kzr_prefix", "[K-lan]", ADMIN_RCON);
 	
@@ -89,20 +94,24 @@ public plugin_init() {
 	}
 	
 	// BOTS
-	new CommId[2][5];
+	new cvar[32];
+	get_pcvar_string(g_cvar[BOTS], cvar, charsmax(cvar));
+	if(cvar[0]) {
+		new CommId[4][5];
+		new count = ExplodeString(CommId, 4, 5, cvar, ' ');
 	
-	if(get_pcvar_num(g_cvar[WR]))
-		CommId[0] = "wr";
-	
-	new cvar[5];
-	get_pcvar_string(g_cvar[COMM], cvar, charsmax(cvar));
-	if(cvar[0])
-		CommId[1] = cvar;
-	
-	for(new i; i < sizeof(CommId); i++) {
-		if(CommId[i][0]) {
+		for(new i; i < count; i++) {
 			new botname[128], szOutMsg[192];
-			ReadDemos(GetCommNum(CommId[i]), g_szMapName, szOutMsg, false, true);
+			
+			if(equal(CommId[i], "wr"))
+				CommId[i] = "xj";
+				
+			new iFound = ReadDemos(GetCommNum(CommId[i]), g_szMapName, szOutMsg, false, true);
+			if(equal(CommId[i], "xj") && !iFound) {
+				CommId[i] = "cc";
+				ReadDemos(GetCommNum(CommId[i]), g_szMapName, szOutMsg, false, true);
+			}
+			
 			format(botname, charsmax(botname), "[%s] %s", CommId[i], szOutMsg);
 			CreateBot(botname);
 		}
@@ -166,7 +175,7 @@ public ReadCommunity() {
 			continue;
 		}
 		
-		parse(szData, g_szComm[i][ID], 5,  g_szComm[i][NAME], 32, g_szComm[i][URL], 256);
+		ExplodeString(g_szComm[i], sizeof(g_szComm), charsmax(g_szComm[][]), szData, ',');
 		i++;
 	}
 	fclose(hFile);
@@ -191,27 +200,37 @@ public CmdSayCheck() {
 
 // function Say
 public CmdSay(id, szInMsg[64]) {
-	new CommId[5], WhatMap[32]; 
-	if(szInMsg[0] == '/') {	
-		replace(szInMsg, charsmax(szInMsg), "/", "");
-		parse(szInMsg, CommId, charsmax(CommId), WhatMap, charsmax(WhatMap));
+	new CommId[5], WhatMap[32];
+	
+	replace(szInMsg, charsmax(szInMsg), "/", "");
+	parse(szInMsg, CommId, charsmax(CommId), WhatMap, charsmax(WhatMap));
+
+	if(equal(CommId, "wr"))
+		CommId = "xj";
+		
+	new num = GetCommNum(CommId);
+	
+	if(!WhatMap[0])
+		WhatMap = g_szMapName;
+	
+	new szOutMsg[192];
+	new iFound = ReadDemos(num, WhatMap, szOutMsg);
+	
+	if(equal(CommId, "xj") && !iFound) {
+		CommId = "cc";
+		num = GetCommNum(CommId);
+		ReadDemos(num, WhatMap, szOutMsg);
 	}
 	
-	new num = GetCommNum(CommId);
-	if(num >= 0) {
-		if(!WhatMap[0])
-			WhatMap = g_szMapName;
+	if(num < 0)
+		return PLUGIN_HANDLED;
 		
-		new szOutMsg[192];
-		ReadDemos(num, WhatMap, szOutMsg);
-		
-		new prefix[16];
-		get_pcvar_string(g_cvar[PREFIX], prefix, charsmax(prefix));
-		
-		new text[256];
-		format(text, charsmax(text), "^x04%s^x03 %s record on ^x04%s^x03: %s", prefix, g_szComm[num][NAME], WhatMap[0], szOutMsg);
-		ColorChat(id, GREY,"^x03%s", text);
-	}
+	new prefix[16];
+	get_pcvar_string(g_cvar[PREFIX], prefix, charsmax(prefix));
+	
+	new text[256];
+	format(text, charsmax(text), "^x04%s^x03 %s record on ^x04%s^x03: %s", prefix, g_szComm[num][NAME], WhatMap[0], szOutMsg);
+	ColorChat(id, GREY,"^x03%s", text);
 	
 	return PLUGIN_CONTINUE;
 }
@@ -219,45 +238,75 @@ public CmdSay(id, szInMsg[64]) {
 // Create message
 stock ReadDemos(num, WhatMap[32], szOutMsg[192], bool:color = true, bool:one = false) {
 	if(num<0)
-		return;
+		return 0;
+	
+	new DataRec[6][REC][64];
+	new iFound = GetRecordData(WhatMap, DataRec, g_szComm[num][DEMOS]);
+	
+	format(szOutMsg, charsmax(szOutMsg), "No record");
+	for(new i; i < iFound; i++) {
+		if( !DataRec[i][JUMPER][0] )
+			break;
 		
-	new Author[6][32], Time[6][9], Extension[6][8];
-	
-	new iFound = GetRecordData(WhatMap, Author, Time, Extension, g_szComm[num][DEMOS]);
-	
-	if(iFound > 0) {
-		for(new i; i < iFound; i++) {
-			if( !Author[i][0] )
-				break;
+		if(DataRec[i][EXT][0] && !one) {
+			new szOutAdd[32];
 			
-			if(Extension[i][0] && !one) {
-				new szOutAdd[32];
+			if(DataRec[i][TIME][0] == '*')
+				format(szOutAdd, charsmax(szOutAdd), " ^x04[%s] ^x03 No record;", DataRec[i][EXT]);
+			else
+				format(szOutAdd, charsmax(szOutAdd), " ^x04[%s] %s^x03 by^x04 %s %s;", 
+				DataRec[i][EXT], DataRec[i][TIME], DataRec[i][JUMPER], DataRec[i][COUNTRY]);
 				
-				if(Time[i][0] == '*')
-					format(szOutAdd, charsmax(szOutAdd), " ^x04[%s] ^x03 No record;", Extension[i]);
-				else
-					format(szOutAdd, charsmax(szOutAdd), " ^x04[%s] %s^x03 by^x04 %s;", Extension[i], Time[i], Author[i]);
-					
-				add(szOutMsg, charsmax(szOutMsg), szOutAdd);
-			}
-			else {
-				if(Time[i][0] == '*')
-					format(szOutMsg, charsmax(szOutMsg), "No record");
-					
-				else
-					format(szOutMsg, charsmax(szOutMsg), "^x04%s^x03 by^x04 %s", Time[i], Author[i]);
-			}	
+			add(szOutMsg, charsmax(szOutMsg), szOutAdd);
 		}
+		else {
+			if(DataRec[i][TIME][0] == '*')
+				format(szOutMsg, charsmax(szOutMsg), "No record");
+				
+			else
+				format(szOutMsg, charsmax(szOutMsg), "^x04%s^x03 by^x04 %s %s", 
+				DataRec[i][TIME], DataRec[i][JUMPER], DataRec[i][COUNTRY]);
+		}	
 	}
-	else
-		format(szOutMsg, charsmax(szOutMsg), "No record");
 	
 	if(!color) {
 		replace_all(szOutMsg, charsmax(szOutMsg), "^x04", "");
 		replace_all(szOutMsg, charsmax(szOutMsg), "^x03", "");
 	}
 	
-	return;
+	return iFound;
+}
+
+// Get data from file
+stock GetRecordData(const Map[32], DataRec[6][REC][64], RecFile[256]) {
+	new i = 0, szData[64], iMapLen = strlen(Map);
+	
+	new iFile = fopen(RecFile, "rt");
+	
+	if(!iFile)
+		return 0;
+		
+	while(!feof(iFile)) {
+		fgets(iFile, szData, charsmax(szData));
+		trim(szData);
+		
+		if(!szData[0] || !equali(szData, Map, iMapLen))
+			continue;
+		
+		ExplodeString(DataRec[i], sizeof(DataRec[]), charsmax(DataRec[][]), szData, ' ');
+		
+		if(DataRec[i][TIME][2] != ':')
+			ClimbtimeToString(str_to_float(DataRec[i][TIME]), DataRec[i][TIME], 8);
+
+		if(DataRec[i][MAPP][iMapLen] == '[')
+			copyc(DataRec[i][EXT], 8, DataRec[i][MAPP][iMapLen+1], ']');
+		
+		i++;
+	}
+	
+	fclose(iFile);
+	
+	return i;
 }
 
 // Get Num By ID (say command)
@@ -268,48 +317,6 @@ stock GetCommNum(CommId[]) {
 		}
 	}
 	return -1;
-}
-
-// Get data from file
-stock GetRecordData(const Map[32], Jumper[6][32], Time[6][9], Extension[6][8], RecFile[256]) {
-	new szData[64], szMap[32], szTime[9], iFounds, iLen, iMapLen = strlen(Map);
-	
-	new iFile = fopen(RecFile, "rt");
-	
-	if(!iFile)
-		return 0;
-	
-	while(!feof(iFile)) {
-		fgets(iFile, szData, 63);
-		trim(szData);
-		
-		if(!szData[0] || !equali(szData, Map, iMapLen))
-			continue;
-		
-		iLen = 1 + copyc(szMap, 31, szData, ' ');
-		
-		if( szMap[iMapLen] != '[' && iMapLen != strlen(szMap) )
-			continue;
-		
-		iLen += 1 + copyc(szTime, 8, szData[iLen], ' ');
-		copy( Jumper[iFounds], 32, szData[iLen]);
-		
-		if(szTime[2] != ':')
-			ClimbtimeToString(str_to_float(szTime), szTime, 8);
-		
-		copy(Time[iFounds], 8, szTime);
-		
-		//Time[iFounds] = str_to_num(szTime);
-		
-		if(szMap[iMapLen] == '[')
-			copyc(Extension[iFounds], 8, szMap[iMapLen+1], ']');
-		
-		iFounds++;
-	}
-	
-	fclose(iFile);
-	
-	return iFounds;
 }
 
 // Convert Time
@@ -454,9 +461,22 @@ public CreateBot(botname[]) {
 		set_pev(id, pev_renderamt, 0.0);
 		
 		new team = get_pcvar_num(g_cvar[TEAM]);
-		console_print(0, "---------- %d ---", team);
 		if(0 <= team <= 3) cs_set_user_team(id, team);
 	}
 }
 
+/********************************************* FUNC ***********************************************/
+
+stock ExplodeString( szOutput[][], nMax, nSize, szInput[], szDelimiter ) {
+	new i = 0, nLen = 0, l = strlen(szInput);
+	do {
+		trim(szInput[nLen]);
+		nLen += (1 + copyc( szOutput[i], nSize, szInput[nLen], szDelimiter ));
+	} while ((nLen < l) && (++i < nMax));
+	return i;
+}
+
 /********************************************* END ************************************************/
+/* AMXX-Studio Notes - DO NOT MODIFY BELOW HERE
+*{\\ rtf1\\ ansi\\ deff0{\\ fonttbl{\\ f0\\ fnil Tahoma;}}\n\\ viewkind4\\ uc1\\ pard\\ lang1049\\ f0\\ fs16 \n\\ par }
+*/
