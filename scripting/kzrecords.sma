@@ -282,21 +282,23 @@ stock GetRecordData(const Map[32], DataRec[6][REC][64], RecFile[256]) {
 		return 0;
 		
 	while(!feof(iFile)) {
+		new szMap[32];
 		fgets(iFile, szData, charsmax(szData));
 		trim(szData);
 		
-		if(!szData[0] || !equali(szData, Map, iMapLen))
+		copy(szMap, iMapLen, szData);
+		strtolower(szMap);
+		
+		if(!szData[0] || !equali(szMap, Map, iMapLen))
 			continue;
 		
 		ExplodeString(szDataRec, sizeof(szDataRec), charsmax(szDataRec[]), szData, ' ');
 		
-		szDataRec[MAP] = szDataRec[MAPP];
+		szDataRec[MAP] = szMap;
 		if(equal(szDataRec[MAPP][iMapLen], "[")) {
 			strtok(szDataRec[MAPP], szDataRec[MAP], charsmax(szDataRec[]), szDataRec[EXT], charsmax(szDataRec[]), '[');
 			copyc(szDataRec[EXT], 8, szDataRec[EXT], ']');
 		}
-		
-		console_print(0, "%s %s %s", szDataRec[MAPP], szDataRec[MAP], szDataRec[EXT]);
 			
 		if(!equal(szDataRec[MAP], Map))
 			continue;
@@ -485,3 +487,6 @@ stock ClimbtimeToString(const Float:flClimbTime, szOutPut[], const iLen) {
 }
 
 /********************************************* END ************************************************/
+/* AMXX-Studio Notes - DO NOT MODIFY BELOW HERE
+*{\\ rtf1\\ ansi\\ deff0{\\ fonttbl{\\ f0\\ fnil Tahoma;}}\n\\ viewkind4\\ uc1\\ pard\\ lang1049\\ f0\\ fs16 \n\\ par }
+*/

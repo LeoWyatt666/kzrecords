@@ -1,5 +1,5 @@
 # kzrecords
-KZ World and Coommunity Records. Version 0.3
+KZ World and Coommunity Records. Version 0.4
 
 // Cvars
 kzr_prefix 		"[kzr]"	// Prefix message
