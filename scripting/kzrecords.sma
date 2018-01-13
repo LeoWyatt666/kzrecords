@@ -10,10 +10,11 @@
 #include <engine>
 #include <colorchat>
 #include <sorting>
+#include <sqlx>
 
 
 #define PLUGIN "KZ Records"
-#define VERSION "0.3"
+#define VERSION "0.4"
 #define AUTHOR "Jeronimo."
 
 #pragma semicolon 1
@@ -49,7 +50,12 @@ enum _:CVAR {
 	BOTS,
 	END,
 	PREFIX,
-	TEAM
+	TEAM,
+	SQL,
+	SQL_HOST,
+	SQL_DB,
+	SQL_USER,
+	SQL_PASS
 };
 new g_cvar[CVAR];
 
@@ -61,6 +67,9 @@ enum _:REC {
 	MAP,
 	EXT
 };
+
+new Handle:SQL_Tuple;
+new Handle:SQL_Connection;
 
 /******************************************* BODY *************************************************/
 
@@ -84,21 +93,21 @@ public plugin_init() {
 	// 0 = CS_TEAM_UNASSIGNED, 1 = CS_TEAM_T, 2 = CS_TEAM_CT, 3 = CS_TEAM_SPECTATOR
 	g_cvar[TEAM] 	= register_cvar("kzr_bot_team", "1", ADMIN_RCON);
 	
+	g_cvar[SQL] 	 = register_cvar("kzr_sql", "1", ADMIN_RCON);
+	g_cvar[SQL_HOST] = register_cvar("kzr_sql_host", "127.0.0.1", ADMIN_RCON);
+	g_cvar[SQL_DB] 	 = register_cvar("kzr_sql_db", "lonis", ADMIN_RCON);
+	g_cvar[SQL_USER] = register_cvar("kzr_sql_user", "lonis", ADMIN_RCON);
+	g_cvar[SQL_PASS] = register_cvar("kzr_sql_pass", "lonis", ADMIN_RCON);
+	
 	// Mapname
 	get_mapname(g_szMapName, 31);
 	strtolower(g_szMapName);
-	
-	// Read data comm from File;
-	ReadCommunity();
 	
 	// Demos Files
 	for(new i; i < sizeof(g_szComm[]); i++) {
 		format(g_szComm[i][DEMOS], charsmax(g_szComm[][]),"%s/demos_%s.txt", g_szDir, g_szComm[i][ID]);
 		format(g_szComm[i][INFO], charsmax(g_szComm[][]),"%s/info_%s.txt", g_szDir, g_szComm[i][ID]);
-	}
-	
-	// BOTS
-	CreateBots();		
+	}		
 }
 
 public plugin_cfg() {
@@ -110,8 +119,62 @@ public plugin_cfg() {
 		server_cmd("exec %s", szCfgPath);
 		server_exec();
 	}
+	
+	new host[33],dbase[33],user[33],pass[33];
+	get_cvar_string("kzr_sql_host",host,30);
+	get_cvar_string("kzr_sql_db",dbase,30);
+	get_cvar_string("kzr_sql_user",user,30);
+	get_cvar_string("kzr_sql_pass",pass,30);
+	SQL_Tuple = SQL_MakeDbTuple(host,user,pass,dbase);
+	new err, error[256];
+	SQL_Connection = SQL_Connect(SQL_Tuple, err, error, charsmax(error));
+	
+	if(SQL_Connection == Empty_Handle) {
+		log_amx("[SQLx sql error] %s ",error);
+	}
+	
+	// Read data comm from File;
+	new cvsql = get_pcvar_num(g_cvar[SQL]);
+	if(cvsql==1) {
+		ReadCommunitySQL();
+	}
+	else {
+		ReadCommunity();
+	}
+	
+	// BOTS
+	CreateBots();
 }
+
+public plugin_end(){
+	SQL_FreeHandle(SQL_Connection);
+}
+
 /********************************************* COMM ***********************************************/
+
+public ReadCommunitySQL() {	
+	new Handle:query = SQL_PrepareQuery(SQL_Connection, "SELECT `name`, `fullname`, `url`  FROM `kz_comm` ORDER BY sort");
+	
+	SQL_Execute (query);
+	
+	new szData[512];
+	new num = 0;
+	while(SQL_MoreResults(query)) {
+		new name[32];
+		SQL_ReadResult(query, 0, name, 31);
+		new fullname[32];
+		SQL_ReadResult(query, 1, fullname, 31);
+		new url[32];
+		SQL_ReadResult(query, 2, url, 31);
+		
+		format(szData, charsmax(szData), "%s, %s, %s/demos.txt", name, fullname, url);
+		
+		ExplodeString(g_szComm[num], sizeof(g_szComm), charsmax(g_szComm[][]), szData, ',');
+		num++;
+		
+		SQL_NextRow(query);
+	}
+}
 
 // Read data comm from File;
 public ReadCommunity() {
@@ -231,7 +294,15 @@ stock ReadDemos(num, WhatMap[32], szOutMsg[192], bool:color = true, bool:one = f
 		return 0;
 	
 	new DataRec[6][REC][64];
-	new iFound = GetRecordData(WhatMap, DataRec, g_szComm[num][DEMOS]);
+	
+	new iFound;
+	if(get_pcvar_num(g_cvar[SQL])==1) {
+		iFound = GetRecordDataSQL(WhatMap, DataRec, g_szComm[num][ID]);
+	}
+	else {
+		iFound = GetRecordData(WhatMap, DataRec, g_szComm[num][DEMOS]);
+	}
+		
 		
 	format(szOutMsg, charsmax(szOutMsg), "No record");
 	for(new i; i < iFound; i++) {
@@ -269,6 +340,32 @@ stock ReadDemos(num, WhatMap[32], szOutMsg[192], bool:color = true, bool:one = f
 	}
 	
 	return iFound;
+}
+
+stock GetRecordDataSQL(const Map[32], DataRec[6][REC][64], comm_id[256]) {
+	new Handle:query = SQL_PrepareQuery(SQL_Connection, "SELECT `time`, `player`, `country`  FROM `kz_records` WHERE map='%s' AND comm='%s'", Map, comm_id);
+	
+	SQL_Execute (query);
+	
+	new rows = SQL_AffectedRows(query);
+	if(rows) {
+		new Time[32];
+		SQL_ReadResult(query, 0, Time, 31);
+		new Player[32];
+		SQL_ReadResult(query, 1, Player, 31);
+		new Country[32];
+		SQL_ReadResult(query, 2, Country, 31);
+		
+		new szData[64];
+		format(szData, charsmax(szData), "%s %s %s %s", Map, Time, Player, Country);
+		
+		new szDataRec[REC][64];
+		ExplodeString(szDataRec, sizeof(szDataRec), charsmax(szDataRec[]), szData, ' ');
+		
+		DataRec[0] = szDataRec;
+	}
+	
+	return rows;
 }
 
 // Get data from file
@@ -412,8 +509,8 @@ public CreateBots() {
 	new cvar[32];
 	get_pcvar_string(g_cvar[BOTS], cvar, charsmax(cvar));
 	if(cvar[0]) {
-		new CommId[4][5];
-		new count = ExplodeString(CommId, 4, 5, cvar, ' ');
+		new CommId[8][8];
+		new count = ExplodeString(CommId, 8, 8, cvar, ' ');
 		
 		for(new i; i <= count; i++) {
 			new botname[128], szOutMsg[192];
@@ -469,7 +566,7 @@ stock ExplodeString( szOutput[][], nMax, nSize, szInput[], szDelimiter ) {
 		trim(szInput[nLen]);
 		nLen += (1 + copyc( szOutput[i], nSize, szInput[nLen], szDelimiter ));
 	} while ((nLen < l) && (++i <= nMax));
-	return i;
+	return i+1;
 }
 
 // Convert Time
@@ -487,6 +584,3 @@ stock ClimbtimeToString(const Float:flClimbTime, szOutPut[], const iLen) {
 }
 
 /********************************************* END ************************************************/
-/* AMXX-Studio Notes - DO NOT MODIFY BELOW HERE
-*{\\ rtf1\\ ansi\\ deff0{\\ fonttbl{\\ f0\\ fnil Tahoma;}}\n\\ viewkind4\\ uc1\\ pard\\ lang1049\\ f0\\ fs16 \n\\ par }
-*/
