@@ -10,9 +10,9 @@ CREATE TEMPORARY TABLE `demos` (
 	`country` VARCHAR(8) NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-LOAD DATA LOCAL INFILE 'demos/demos_cc.txt'
+LOAD DATA LOCAL INFILE 'demos_cc.txt'
 INTO TABLE `demos` CHARACTER SET 'UTF8' FIELDS TERMINATED BY ' ' IGNORE 1 LINES
-(`map`, `time`, @ignored, @ignored, @ignored, `country`, `player`);
+(`map`, `time`,`player`, `country`);
 
 INSERT INTO `kz_records` (`map`, `mappath`, `time`,`player`, `country`, `comm`)
 SELECT
@@ -25,7 +25,7 @@ SELECT
 FROM `demos`;
 
 DELETE FROM `demos`;
-LOAD DATA LOCAL INFILE 'demos/demos_xj.txt'
+LOAD DATA LOCAL INFILE 'demos_xj.txt'
 INTO TABLE `demos` CHARACTER SET 'UTF8' FIELDS TERMINATED BY ' ' IGNORE 1 LINES
 (`map`, `time`,`player`, `country`);
 
@@ -40,7 +40,7 @@ SELECT
 FROM `demos`;
 
 DELETE FROM `demos`;
-LOAD DATA LOCAL INFILE 'demos/demos_kzru.txt'
+LOAD DATA LOCAL INFILE 'demos_ru.txt'
 INTO TABLE `demos` CHARACTER SET 'UTF8' FIELDS TERMINATED BY ' ' IGNORE 1 LINES
 (`map`, `time`, `player`);
 
@@ -55,7 +55,7 @@ SELECT
 FROM `demos`;
 
 DELETE FROM `demos`;
-LOAD DATA LOCAL INFILE 'demos/demos_rush.txt'
+LOAD DATA LOCAL INFILE 'demos_rush.txt'
 INTO TABLE `demos` CHARACTER SET 'UTF8' FIELDS TERMINATED BY ' ' IGNORE 1 LINES
 (`map`, `time`,`player`, `country`);
 
