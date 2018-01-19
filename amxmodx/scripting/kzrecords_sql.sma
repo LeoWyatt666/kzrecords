@@ -10,7 +10,6 @@
 */
 
 #include <amxmodx>
-#include <curl>
 #include <hamsandwich>
 #include <fakemeta_util>
 #include <colorchat>
@@ -27,15 +26,7 @@
 new g_szMapName[32];
 new bool:g_bShowRecordEnd = true;
 
-new g_szDir[128];
-new const g_szDirFile[] = "kzrecords";
-new const g_szCommFile[] = "community.ini";
-new const g_szCfgFile[] = "kzrecords.cfg";
-
-new g_szCommDef[][][] =  {
-	{ "xj", "Xtreme-Jumps", "https://xtreme-jumps.eu/demos.txt"},
-	{ "cc", "Cosy-Climbing", "https://cosy-climbing.net/demoz.txt"}
-};
+new const g_szCfgFile[] = "kzrecords_sql.cfg";
 
 enum _:COMM {
 	ID,
@@ -83,7 +74,6 @@ public plugin_init() {
 	// Client cmd
 	register_clcmd("say", "CmdSayCheck");
 	register_clcmd("say_team", "CmdSayCheck");
-	register_clcmd("kzr_update", "UpdateRecords", ADMIN_RCON);
 
 	// Finish button
 	RegisterHam(Ham_Use, "func_button", "hamUse");
@@ -96,7 +86,6 @@ public plugin_init() {
 	// 0 = CS_TEAM_UNASSIGNED, 1 = CS_TEAM_T, 2 = CS_TEAM_CT, 3 = CS_TEAM_SPECTATOR
 	g_cvar[TEAM] 	= register_cvar("kzr_bot_team", "1", ADMIN_RCON);
 
-	g_cvar[SQL] 	 = register_cvar("kzr_sql", "1", ADMIN_RCON);
 	g_cvar[SQL_HOST] = register_cvar("kzr_sql_host", "127.0.0.1", ADMIN_RCON);
 	g_cvar[SQL_DB] 	 = register_cvar("kzr_sql_db", "lonis", ADMIN_RCON);
 	g_cvar[SQL_USER] = register_cvar("kzr_sql_user", "lonis", ADMIN_RCON);
@@ -132,22 +121,8 @@ public plugin_cfg() {
 	get_mapname(g_szMapName, 31);
 	strtolower(g_szMapName);
 
-	get_localinfo("amxx_datadir", g_szDir, charsmax(g_szDir));
-	format(g_szDir, charsmax(g_szDir),"%s/%s", g_szDir, g_szDirFile);
-
-	if(!dir_exists(g_szDir))
-		mkdir(g_szDir);
-
 	// Read data comm from File;
 	ReadCommunity();
-
-	// Demos Files
-	for(new i; i < sizeof(g_szComm); i++) {
-		if(equal(g_szComm[i][ID],"")) continue;
-
-		format(g_szComm[i][DEMOS], charsmax(g_szComm[][]),"%s/demos_%s.txt", g_szDir, g_szComm[i][ID]);
-		format(g_szComm[i][INFO], charsmax(g_szComm[][]),"%s/info_%s.txt", g_szDir, g_szComm[i][ID]);
-	}
 
 	// BOTS
 	CreateBots();
@@ -159,7 +134,7 @@ public plugin_end(){
 
 /********************************************* COMM ***********************************************/
 
-public ReadCommunitySQL() {
+public ReadCommunity() {
 	new Handle:query = SQL_PrepareQuery(SQL_Connection, "SELECT `name`, `fullname`, `url`  FROM `kz_comm` ORDER BY sort");
 
 	SQL_Execute (query);
@@ -167,7 +142,7 @@ public ReadCommunitySQL() {
 	if(!SQL_AffectedRows(query))
 		return 0;
 
-	new szData[512];
+	
 	new num = 0;
 	while(SQL_MoreResults(query)) {
 		new name[32];
@@ -177,51 +152,14 @@ public ReadCommunitySQL() {
 		new url[32];
 		SQL_ReadResult(query, 2, url, 31);
 
-		format(szData, charsmax(szData), "%s, %s, %s/demos.txt", name, fullname, url);
+		new szData[512];
+		format(szData, charsmax(szData), "%s, %s, %s", name, fullname, url);
 
 		ExplodeString(g_szComm[num], sizeof(g_szComm), charsmax(g_szComm[][]), szData, ',');
 		num++;
 
 		SQL_NextRow(query);
 	}
-
-	return 1;
-}
-
-// Read data comm from File;
-public ReadCommunity() {
-	if(get_pcvar_num(g_cvar[SQL]) && ReadCommunitySQL())
-		return 1;
-
-	new szFile[128];
-	format(szFile, charsmax(szFile) , "%s/%s", g_szDir, g_szCommFile);
-
-	if(!file_exists(szFile))  {
-		new hFile = fopen(szFile, "wt");
-		fputs(hFile, "; Format: Id (say command), Name, Demos URL^n^n");
-
-		for( new i; i < charsmax(g_szCommDef[]); i++ ) {
-			new text[128];
-			format(text,127,"%s, %s, %s^n", g_szCommDef[i][0], g_szCommDef[i][1], g_szCommDef[i][2]);
-			fputs(hFile, text);
-		}
-		fclose(hFile);
-	}
-
-	new hFile = fopen(szFile, "r");
-	new szData[512];
-	new num = 0;
-	while(!feof(hFile))  {
-		fgets(hFile, szData, charsmax(szData));
-		trim(szData);
-
-		if(!szData[0] || szData[0] == '^n' || szData[0] == ';')
-			continue;
-
-		ExplodeString(g_szComm[num], sizeof(g_szComm), charsmax(g_szComm[][]), szData, ',');
-		num++;
-	}
-	fclose(hFile);
 
 	return 1;
 }
@@ -306,14 +244,7 @@ stock ReadDemos(num, WhatMap[32], szOutMsg[192], bool:color = true, bool:one = f
 
 	new DataRec[6][REC][64];
 
-	new iFound;
-	if(get_pcvar_num(g_cvar[SQL])==1) {
-		iFound = GetRecordDataSQL(WhatMap, DataRec, g_szComm[num][ID]);
-	}
-	else {
-		iFound = GetRecordData(WhatMap, DataRec, g_szComm[num][DEMOS]);
-	}
-
+	new iFound = GetRecordData(WhatMap, DataRec, g_szComm[num][ID]);
 
 	format(szOutMsg, charsmax(szOutMsg), "No record");
 	for(new i; i < iFound; i++) {
@@ -353,7 +284,7 @@ stock ReadDemos(num, WhatMap[32], szOutMsg[192], bool:color = true, bool:one = f
 	return iFound;
 }
 
-stock GetRecordDataSQL(const Map[32], DataRec[6][REC][64], comm_id[256]) {
+stock GetRecordData(const Map[32], DataRec[6][REC][64], comm_id[256]) {
 	new Handle:query = SQL_PrepareQuery(SQL_Connection, "SELECT `time`, `player`, `country`  FROM `kz_records` WHERE map='%s' AND comm='%s'", Map, comm_id);
 
 	SQL_Execute (query);
@@ -377,113 +308,6 @@ stock GetRecordDataSQL(const Map[32], DataRec[6][REC][64], comm_id[256]) {
 	}
 
 	return rows;
-}
-
-// Get data from file
-stock GetRecordData(const Map[32], DataRec[6][REC][64], RecFile[256]) {
-	new i = 0, szData[64];
-
-	new iFile = fopen(RecFile, "rt");
-
-	if(!iFile)
-		return 0;
-
-	while(!feof(iFile)) {
-		new szDataRec[REC][64];
-
-		fgets(iFile, szData, charsmax(szData));
-		trim(szData);
-
-		if(!szData[0])
-			continue;
-
-		new szMap[2][32];
-
-		ExplodeString(szDataRec, sizeof(szDataRec), charsmax(szDataRec[]), szData, ' ');
-		ExplodeString(szMap, sizeof(szMap), charsmax(szMap[]), szDataRec[0], '[');
-
-		if(!equal(szMap[0], Map))
-			continue;
-
-		szDataRec[MAP] = szMap[0];
-		copyc(szDataRec[EXT], 8, szMap[1], ']');
-
-		DataRec[i] = szDataRec;
-		i++;
-	}
-
-	fclose(iFile);
-
-	return i;
-}
-
-/********************************************* CURL ***********************************************/
-
-#define CURL_BUFFER_SIZE 256
-
-public curl_download_file(file[], link[])
-{
-	new data[4];
-
-	data[0] = fopen(file, "wb");
-
-	server_print("curl start: %s", link);
-
-	new CURL:curl = curl_easy_init();
-	curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, CURL_BUFFER_SIZE);
-	curl_easy_setopt(curl, CURLOPT_URL, link);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, data[0]);
-	/* ATTENTION ATTENTION ATTENTION
-
-	Without CURLOPT_NOSIGNAL on Linux Machines CURL can cause SEG FAULT even on idle state (idk why), better not remove this line
-
-	ATTENTION ATTENTION ATTENTION*/
-	curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, "write");
-	curl_easy_perform(curl, "complite", data, sizeof(data));
-}
-
-public write(data[], size, nmemb, file)
-{
-	new actual_size = size * nmemb;
-
-	fwrite_blocks(file, data, actual_size, BLOCK_CHAR);
-
-	return actual_size;
-}
-
-public complite(CURL:curl, CURLcode:code, data[])
-{
-	if(code == CURLE_WRITE_ERROR)
-		server_print("transfer aborted");
-	else
-		server_print("curl complete");
-
-	fclose(data[0]);
-	curl_easy_cleanup(curl);
-}
-/********************************************* UPDATE *********************************************/
-
-public UpdateRecords() {
-	new szInMsg[8];
-	read_args(szInMsg, charsmax(szInMsg));
-	strtolower(szInMsg);
-	remove_quotes(szInMsg);
-	trim(szInMsg);
-
-	if(!szInMsg[0]) {
-		for(new i; i < sizeof(g_szComm); i++) {
-			if(equal(g_szComm[i][ID],"")) continue;
-
-			curl_download_file( g_szComm[i][DEMOS], g_szComm[i][URL]);
-		}
-	}
-	else {
-		new num = GetCommNum(szInMsg);
-		curl_download_file( g_szComm[num][DEMOS], g_szComm[num][URL]);
-	}
-
-	return PLUGIN_HANDLED;
 }
 
 /********************************************* FINISH *********************************************/
@@ -645,3 +469,6 @@ fm_cs_set_user_team(id, team)
 
 
 /********************************************* END ************************************************/
+/* AMXX-Studio Notes - DO NOT MODIFY BELOW HERE
+*{\\ rtf1\\ ansi\\ deff0{\\ fonttbl{\\ f0\\ fnil Tahoma;}}\n\\ viewkind4\\ uc1\\ pard\\ lang1049\\ f0\\ fs16 \n\\ par }
+*/
