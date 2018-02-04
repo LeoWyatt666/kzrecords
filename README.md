@@ -5,7 +5,7 @@
 ### File Version 0.5
 
 Install:
-1. Copy all files to folder "addons"
+1. Copy all files from folder "file" to "addons"
 2. Add "SoLoader" metamod plugin in "addons/metamod/plugins.ini"
 3. Add modules "curl" in "addons/amxmodx/configs/modules.ini"
 4. Add plugin "kzrecords.amxx" in "addons/amxmodx/configs/plugins.ini"
@@ -25,11 +25,11 @@ say /wr 		// /wr, /ru, ...
 kzr_update xj 	// empty, xj, cc, ru
 ```
 
-### SQL Version 0.5
+### MySQL Version 0.5
 
 Install:
-1. Copy all files to folder "addons"
-2. Add plugin name in addons/amxmodx/configs/plugins.ini
+1. Copy all files from folder "mysql" to "addons"
+2. Add plugin "kzrecords_sql.amxx" in addons/amxmodx/configs/plugins.ini
 3. Add SQL files from folder addons/amxmodx/files/
 4. Add to Cron php script update "addons/amxmodx/files/upd_kz_records.php"
 
